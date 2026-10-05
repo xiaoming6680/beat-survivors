@@ -541,6 +541,11 @@ const Game = (() => {
       if (!simOn || dt < 0) dt = 0;
       dt = Math.min(dt, 0.05);
       if (G.state === 'dead' || G.state === 'won') dt *= 0.35;
+      // 受击顿帧：画面停一下，让人意识到“被打了”
+      if (W.hitStop > 0) {
+        W.hitStop -= dtReal;
+        dt = 0;
+      }
       if (dt > 0) {
         const n = Math.ceil(dt / (1 / 120));
         for (let i = 0; i < n; i++) W.step(dt / n);

@@ -156,7 +156,22 @@ button:disabled { opacity: 0.35; cursor: default; box-shadow: none; text-shadow:
 #hud-left { position: absolute; top: 14px; left: 16px; width: 230px; display: flex; flex-direction: column; gap: 8px; }
 .hp { display: flex; align-items: center; gap: 8px; }
 .hp-track { flex: 1; height: 10px; border-radius: 2px; background: rgba(255, 59, 92, 0.1); border: 1px solid rgba(255, 59, 92, 0.45); overflow: hidden; }
-.hp-fill { height: 100%; background: linear-gradient(90deg, #ff3b5c, #ff8a6a); box-shadow: 0 0 10px #ff3b5c; transition: width 0.12s; }
+.hp-track { position: relative; }
+.hp-fill { position: relative; height: 100%; background: linear-gradient(90deg, #ff3b5c, #ff8a6a); box-shadow: 0 0 10px #ff3b5c; transition: width 0.12s; }
+/* 掉血痕迹：白色残影比红条晚一点缩回去，让人看清这一下掉了多少 */
+.hp-lag { position: absolute; left: 0; top: 0; bottom: 0; background: #ffe6ea; transition: width 0.5s ease-in 0.35s; }
+.hp.hit { animation: hpHit 0.35s ease-out; }
+@keyframes hpHit { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-5px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+.hp.low .hp-track { animation: lowHp 0.6s ease-in-out infinite; }
+.hp.low #hp-text { color: #ff6a7a; font-weight: 700; }
+@keyframes lowHp { 50% { border-color: #fff; box-shadow: 0 0 12px #ff3b5c; } }
+/* 受击数字 */
+.dmg-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.dmg { position: absolute; transform: translate(-50%, 0); white-space: nowrap; text-align: center; animation: dmgUp 1.2s ease-out forwards; text-shadow: 0 0 6px #000, 0 0 10px #000; }
+.dmg b { display: block; font-family: var(--mono); font-size: 26px; font-weight: 900; color: #ff4a64; text-shadow: 0 0 8px #ff3b5c, 0 0 2px #000; }
+.dmg span { display: block; font-size: 13px; color: #ffd0d6; letter-spacing: 0.08em; }
+.dmg.shield span { color: #ff9ae0; font-size: 14px; }
+@keyframes dmgUp { 0% { opacity: 0; transform: translate(-50%, 8px) scale(1.4); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -34px); } }
 #hp-text { font-family: var(--mono); font-size: 12px; color: #ffb0b8; min-width: 54px; text-align: right; }
 .lv-row { display: flex; justify-content: space-between; align-items: baseline; }
 .lv { font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--accent); text-shadow: 0 0 8px var(--accent); }

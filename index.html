@@ -50,7 +50,7 @@
       <div id="boss-bar" class="boss-bar"><div class="boss-name" id="boss-name"></div><div class="boss-track"><div class="boss-fill" id="boss-fill"></div></div></div>
     </div>
     <div id="hud-left">
-      <div class="hp"><div class="hp-track"><div class="hp-fill" id="hp-fill"></div></div><span id="hp-text"></span></div>
+      <div class="hp" id="hp"><div class="hp-track"><div class="hp-lag" id="hp-lag"></div><div class="hp-fill" id="hp-fill"></div></div><span id="hp-text"></span></div>
       <div class="lv-row"><span class="lv" id="lv">Lv 1</span><span class="combo" id="combo"></span></div>
       <div class="vu"><canvas id="vu" width="180" height="96"></canvas><div class="vu-label" id="vu-label">律动</div></div>
       <div class="mixer" id="mixer"></div>
@@ -68,6 +68,7 @@
     <div id="judge" class="judge"></div>
     <div id="toast" class="toast"></div>
     <div id="hint" class="hint"></div>
+    <div id="dmg-layer" class="dmg-layer"></div>
   </section>
 
   <!-- 升级 -->

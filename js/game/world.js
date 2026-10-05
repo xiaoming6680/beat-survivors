@@ -128,6 +128,8 @@ const W = (() => {
     W.recChanges = [];
     W.xpDropped = 0;
     W.dmgBy = {};
+    W.hitMarks = [];
+    W.hitStop = 0;
     W.hurtLog = [];
     W.xpGot = 0;
     W.pendingBig = 0;
@@ -274,6 +276,7 @@ const W = (() => {
     e.tele = 0;
     e.ring = !!o.ring;
     e.dying = false;
+    e.hitPlayerT = 0;
     W.enemies.push(e);
     if (e.elite) W.burst(x, y, ELITE_RGB, 16, 220, 0.6);
     return e;
@@ -620,15 +623,24 @@ const W = (() => {
     Debug.judge(off);
   };
 
-  W.hurt = function (dmg, srcX, srcY, src = '?') {
+  // 伤害来源的中文名（受击时显示“−12 低频块”）
+  const SRC_NAME = { noise: '杂音', glitch: '毛刺', sub: '低频块', ticker: '节拍器', feedback: '回授爆炸', elite: '精英', ring: '冲击环', laser: '激光', bullet: '弹幕' };
+
+  // src：来源类型；obj：打中你的敌人 / 危险物（用来高亮它）
+  W.hurt = function (dmg, srcX, srcY, src = '?', obj = null) {
     const p = W.player;
     if (!p.alive || p.invuln > 0 || p.dashT > 0 || W.outro || W.god) return;
+    const ang = srcX !== undefined ? Math.atan2(srcY - p.y, srcX - p.x) : null;
+    if (ang !== null) W.hitMarks.push({ ang, t: 0.9, max: 0.9, shield: p.shield > 0 });
+    if (obj) obj.hitPlayerT = 1;
+    const name = obj && obj.boss ? obj.def.name : SRC_NAME[src] || '';
     if (p.shield > 0) {
       p.shield--;
       p.invuln = 0.45;
       W.burst(p.x, p.y, INST.pad.rgb, 18, 300, 0.4);
       R.addRipple(p.x, p.y, 0.6, 1.5);
       Synth.perfect(AE.Clock.sched() + 0.004, [74, 81]);
+      UI.damage(0, `护盾挡住了${name}`, 'shield');
       return;
     }
     dmg *= W.stats.armor;
@@ -644,12 +656,16 @@ const W = (() => {
     AE.hitDip(1);
     Synth.hurt(AE.Clock.sched() + 0.004);
     R.post.hurt = 1;
+    R.post.hurtDir = ang !== null ? [Math.cos(ang), -Math.sin(ang)] : [0, 0];
     W.caAmt = Math.max(W.caAmt, 0.012);
     W.shake(9);
-    if (srcX !== undefined) {
-      const a = Math.atan2(p.y - srcY, p.x - srcX);
-      p.vx += Math.cos(a) * 300;
-      p.vy += Math.sin(a) * 300;
+    W.hitStop = 0.07; // 顿帧
+    UI.damage(Math.max(1, Math.round(dmg)), name, 'hurt');
+    if (ang !== null) {
+      // 撞击点冒红色火花，并把玩家往反方向推
+      W.burst(p.x + Math.cos(ang) * 14, p.y + Math.sin(ang) * 14, U.hex('#ff3b5c', 2.6), 14, 340, 0.35);
+      p.vx -= Math.cos(ang) * 300;
+      p.vy -= Math.sin(ang) * 300;
     }
     if (p.hp <= 0) {
       if (W.revives > 0) {
@@ -936,6 +952,7 @@ const W = (() => {
       if (e.dying) continue;
       if (e.flash > 0) e.flash -= dt * 6;
       if (e.tele > 0) e.tele -= dt * 1.5;
+      if (e.hitPlayerT > 0) e.hitPlayerT -= dt * 1.2;
       if (e.spawnT > 0) e.spawnT -= dt;
       if (e.boss) {
         if (e.entering > 0) {
@@ -953,7 +970,7 @@ const W = (() => {
         }
         e.def.update(e, dt);
         const rr = e.r + pr;
-        if (U.dist2(e.x, e.y, p.x, p.y) < rr * rr) W.hurt(e.dmg, e.x, e.y, 'boss');
+        if (U.dist2(e.x, e.y, p.x, p.y) < rr * rr) W.hurt(e.dmg, e.x, e.y, 'boss', e);
         continue;
       }
       if (e.stunT > 0) { e.stunT -= dt; continue; }
@@ -987,7 +1004,7 @@ const W = (() => {
             if (ee.dying) return;
             W.burst(ee.x, ee.y, U.hex('#ff6a3c', 2.5), 22, 380, 0.4);
             W.parts.push(mkPart(ee.x, ee.y, 0, 0, 20, 0.3, U.hex('#ff8a4a', 2), SH.RING, 0, 110));
-            if (U.dist2(ee.x, ee.y, W.player.x, W.player.y) < 105 * 105) W.hurt(16, ee.x, ee.y, 'feedback');
+            if (U.dist2(ee.x, ee.y, W.player.x, W.player.y) < 105 * 105) W.hurt(16, ee.x, ee.y, 'feedback', ee);
             ee.xp = 0;
             W.kill(ee);
           }, () => Synth.snare(Math.max(tb, AE.Clock.sched() + 0.01), 0.7, W.style.P.snare));
@@ -1018,7 +1035,7 @@ const W = (() => {
       const rr = er + pr;
       const dpx = e.x - p.x, dpy = e.y - p.y;
       const d2p = dpx * dpx + dpy * dpy;
-      if (d2p < rr * rr && e.spawnT <= 0.15) W.hurt(e.dmg, e.x, e.y, e.elite ? 'elite' : e.type);
+      if (d2p < rr * rr && e.spawnT <= 0.15) W.hurt(e.dmg, e.x, e.y, e.elite ? 'elite' : e.type, e);
       // 太远的回收到前方
       if (d2p > 1750 * 1750) {
         if (e.straight) {
@@ -1250,20 +1267,22 @@ const W = (() => {
 
   function updateHazards(dt) {
     const p = W.player;
-    const pr = 12;
+    // 判定以飞船核心为准（比画面上的飞船略小），和危险物的画面宽度一致，避免“没碰到却掉血”
+    const pr = 7;
     const Hz = W.hazards;
     for (let i = Hz.length - 1; i >= 0; i--) {
       const h = Hz[i];
       let dead = false;
+      if (h.hitPlayerT > 0) h.hitPlayerT -= dt;
       if (h.kind === 'ring') {
         h.r += h.speed * dt;
         if (!h.hit) {
           const d = Math.sqrt(U.dist2(p.x, p.y, h.x, h.y));
-          if (Math.abs(d - h.r) < h.thick + pr) {
+          if (Math.abs(d - h.r) < h.thick * 0.7 + pr) {
             const a = Math.atan2(p.y - h.y, p.x - h.x);
             if (Math.abs(U.angleDiff(a, h.gap)) > h.gapHalf) {
               h.hit = true;
-              W.hurt(h.dmg, h.x, h.y, 'ring');
+              W.hurt(h.dmg, h.x, h.y, 'ring', h);
             }
           }
         }
@@ -1272,10 +1291,11 @@ const W = (() => {
         if (W.heard >= h.fireUntil) dead = true;
         else if (W.heard >= h.warnUntil && !h.hit) {
           const nx = -Math.sin(h.ang), ny = Math.cos(h.ang);
-          const d = Math.abs((p.x - h.x) * nx + (p.y - h.y) * ny);
-          if (d < h.width / 2 + pr) {
+          const d0 = (p.x - h.x) * nx + (p.y - h.y) * ny;
+          if (Math.abs(d0) < h.width * 0.45 + pr) {
             h.hit = true;
-            W.hurt(h.dmg, p.x - nx * 10, p.y - ny * 10, 'laser');
+            // 方向指示：从激光线指向玩家的反方向
+            W.hurt(h.dmg, p.x - nx * Math.sign(d0 || 1) * 10, p.y - ny * Math.sign(d0 || 1) * 10, 'laser', h);
           }
         }
       }
@@ -1287,7 +1307,7 @@ const W = (() => {
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       b.life -= dt;
-      const rr = b.r + pr;
+      const rr = b.r + pr + 1;
       let dead = b.life <= 0;
       if (!dead && U.dist2(b.x, b.y, p.x, p.y) < rr * rr) {
         if (p.dashT <= 0 && p.invuln <= 0) {
@@ -1416,6 +1436,10 @@ const W = (() => {
       q.x += q.vx * dt;
       q.y += q.vy * dt;
       if (q.grow) q.size += q.grow * dt;
+    }
+    for (let i = W.hitMarks.length - 1; i >= 0; i--) {
+      W.hitMarks[i].t -= dt;
+      if (W.hitMarks[i].t <= 0) W.hitMarks.splice(i, 1);
     }
     for (const b of W.bolts) b.age += dt;
     for (let i = W.bolts.length - 1; i >= 0; i--) if (W.bolts[i].age > W.bolts[i].life) W.bolts.splice(i, 1);

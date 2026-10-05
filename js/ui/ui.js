@@ -28,7 +28,7 @@ const UI = (() => {
     els = {
       hud: $('hud'), tlSecs: $('tl-secs'), tlHead: $('tl-head'), tlSec: $('tl-sec'), tlInfo: $('tl-info'),
       bossBar: $('boss-bar'), bossName: $('boss-name'), bossFill: $('boss-fill'),
-      hpFill: $('hp-fill'), hpText: $('hp-text'), lv: $('lv'), combo: $('combo'), vuLabel: $('vu-label'),
+      hpFill: $('hp-fill'), hpLag: $('hp-lag'), hp: $('hp'), dmg: $('dmg-layer'), hpText: $('hp-text'), lv: $('lv'), combo: $('combo'), vuLabel: $('vu-label'),
       mixer: $('mixer'), fxrack: $('fxrack'), time: $('time'), kills: $('kills'), key: $('keyinfo'), chord: $('chord'),
       xp: $('xp-fill'), banner: $('banner'), count: $('count'), judge: $('judge'), toast: $('toast'), hint: $('hint'),
     };
@@ -75,6 +75,26 @@ const UI = (() => {
     els.hint.innerHTML = html;
     els.hint.classList.add('show');
     hintTimer = sec;
+  }
+  // 受击数字：“−12 低频块”，在主角头顶飘起
+  function damage(n, label, kind) {
+    const layer = els.dmg;
+    while (layer.childElementCount >= 5) layer.firstElementChild.remove();
+    const p = W.player;
+    const sc = R.worldToScreen(p.x, p.y);
+    const d = document.createElement('div');
+    d.className = 'dmg ' + kind;
+    d.style.left = sc.x + (Math.random() - 0.5) * 30 + 'px';
+    d.style.top = sc.y - 46 + 'px';
+    d.innerHTML = kind === 'shield' ? `<span>${label}</span>` : `<b>−${n}</b>${label ? `<span>${label}</span>` : ''}`;
+    layer.appendChild(d);
+    setTimeout(() => d.remove(), 1300);
+    if (kind === 'hurt') restartAnim(els.hp, 'hit');
+  }
+  function restartAnim(el, cls) {
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
   }
   function grooveUp(tier) {
     toastBig(`律动 ${['', 'I', 'II', 'III'][tier]}`, 'GROOVE');
@@ -224,7 +244,14 @@ const UI = (() => {
       setText(els.key, 'key', `${Harmony.keyName(I.key, W.style.mode)} · ${W.style.bpm} BPM`);
     }
     // 生命 / 等级
-    setStyle(els.hpFill, 'hpf', 'width', ((p.hp / p.maxHp) * 100).toFixed(1) + '%');
+    const hpPct = ((Math.max(0, p.hp) / p.maxHp) * 100).toFixed(1) + '%';
+    setStyle(els.hpFill, 'hpf', 'width', hpPct);
+    setStyle(els.hpLag, 'hpl', 'width', hpPct);
+    const low = p.hp < p.maxHp * 0.3;
+    if (cache.low !== low) {
+      cache.low = low;
+      els.hp.classList.toggle('low', low);
+    }
     setText(els.hpText, 'hpt', `${Math.ceil(p.hp)} / ${p.maxHp}`);
     setText(els.lv, 'lv', `Lv ${W.level}`);
     setText(els.combo, 'cmb', W.combo >= 2 ? `完美连击 ${W.combo}` : '');
@@ -254,5 +281,5 @@ const UI = (() => {
     }
   }
 
-  return { init, show, banner, countdown, judge, toastBig, hint, grooveUp, buildTimeline, section, bossIn, bossDown, bossGone, update };
+  return { init, show, damage, banner, countdown, judge, toastBig, hint, grooveUp, buildTimeline, section, bossIn, bossDown, bossGone, update };
 })();

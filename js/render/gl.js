@@ -12,6 +12,8 @@ const R = (() => {
   const MAX = 50000;
   const data = new Float32Array(MAX * FL);
   let count = 0;
+  // 图元按段绘制：'add' 加法发光；'shadow' 压暗（dst *= 1 - src），用来给主角垫一圈暗底
+  let segments = [{ start: 0, mode: 'add' }];
   let progSprite, progBg, progDown, progUp, progComp, progPre;
   let vaoSprite, vaoFull, instBuf;
   let scene = null;
@@ -22,7 +24,7 @@ const R = (() => {
   let load = 0;
   const cam = { x: 0, y: 0, viewH: 1000, zoom: 1, halfW: 1, halfH: 1, shake: 0, sx: 0, sy: 0 };
   const post = {
-    bloom: 0.5, ca: 0, flash: 0, flashColor: [1, 1, 1], vig: 0.35, grain: 0.035, hurt: 0, exposure: 1,
+    bloom: 0.5, ca: 0, flash: 0, flashColor: [1, 1, 1], vig: 0.35, grain: 0.035, hurt: 0, hurtDir: [0, 0], exposure: 1,
     ripples: [], // {x,y,t0,amp,speed,life}
     kick: 0, beat: 0, time: 0, tint: [0.3, 0.2, 1], tint2: [1, 0.2, 0.6], gridGlow: 1, sat: 1, desat: 0,
     // 曲风画面性格
@@ -246,6 +248,7 @@ const R = (() => {
   in vec2 v_uv;
   uniform sampler2D u_scene, u_bloom;
   uniform float u_bloomStr, u_ca, u_flash, u_vig, u_grain, u_time, u_hurt, u_aspect, u_exposure, u_desat;
+  uniform vec2 u_hurtDir;
   uniform float u_pixel, u_scan;
   uniform vec2 u_res;
   uniform vec3 u_flashColor, u_grade;
@@ -287,7 +290,13 @@ const R = (() => {
     if(u_scan > 0.0){ col *= 1.0 - u_scan * (0.5 + 0.5 * sin(gl_FragCoord.y * 3.14159 / max(1.0, u_pixel * 0.5 + 1.0))); }
     // 受击红色描边
     float edge = smoothstep(0.25, 0.75, length(cc*vec2(u_aspect*0.7,1.0)));
-    col = mix(col, vec3(1.0,0.1,0.2), u_hurt * edge * 0.6);
+    // 受击方向那一侧的屏幕边缘更红
+    float dirW = 1.0;
+    if(dot(u_hurtDir, u_hurtDir) > 0.01){
+      vec2 e2 = normalize(cc * vec2(u_aspect, 1.0) + 1e-4);
+      dirW = 0.25 + 1.1 * max(0.0, dot(e2, normalize(u_hurtDir)));
+    }
+    col = mix(col, vec3(1.0,0.1,0.2), clamp(u_hurt * edge * 0.6 * dirW, 0.0, 0.85));
     // 暗角
     col *= 1.0 - u_vig * smoothstep(0.35, 0.95, length(cc*vec2(1.0, 0.85))*1.25);
     // 颗粒
@@ -517,10 +526,9 @@ const R = (() => {
     gl.uniform2f(u.u_player, playerX, playerY);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    // 精灵（加法混合）
+    // 精灵：按段切换混合模式
     if (count > 0) {
       gl.enable(gl.BLEND);
-      gl.blendFunc(gl.ONE, gl.ONE);
       gl.useProgram(progSprite);
       gl.uniform2f(progSprite.u.u_cam, cx, cy);
       gl.uniform2f(progSprite.u.u_half, v.halfW, v.halfH);
@@ -528,10 +536,20 @@ const R = (() => {
       gl.bindVertexArray(vaoSprite);
       gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, count * FL);
-      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+      for (let k = 0; k < segments.length; k++) {
+        const s0 = segments[k].start;
+        const s1 = k + 1 < segments.length ? segments[k + 1].start : count;
+        if (s1 <= s0) continue;
+        if (segments[k].mode === 'shadow') gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
+        else gl.blendFunc(gl.ONE, gl.ONE);
+        for (let a = 0; a < 4; a++) gl.vertexAttribPointer(1 + a, 4, gl.FLOAT, false, FL * 4, s0 * FL * 4 + a * 16);
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, s1 - s0);
+      }
+      for (let a = 0; a < 4; a++) gl.vertexAttribPointer(1 + a, 4, gl.FLOAT, false, FL * 4, a * 16);
       gl.disable(gl.BLEND);
     }
     count = 0;
+    segments = [{ start: 0, mode: 'add' }];
 
     // Bloom
     gl.bindVertexArray(vaoFull);
@@ -589,6 +607,7 @@ const R = (() => {
     gl.uniform1f(c.u_grain, post.grain + post.grainBoost);
     gl.uniform1f(c.u_time, post.time);
     gl.uniform1f(c.u_hurt, post.hurt);
+    gl.uniform2fv(c.u_hurtDir, post.hurtDir);
     gl.uniform1f(c.u_aspect, W / H);
     gl.uniform1f(c.u_exposure, post.exposure);
     gl.uniform1f(c.u_desat, Math.min(1, post.desat + post.styleDesat));
@@ -618,6 +637,12 @@ const R = (() => {
   }
 
   return {
+    layer(mode) {
+      const last = segments[segments.length - 1];
+      if (last.mode === mode) return;
+      if (last.start === count) last.mode = mode;
+      else segments.push({ start: count, mode });
+    },
     init, resize, setQuality, setAlpha: (m) => { alphaMul = m; }, track: (on) => { tracking = on; if (on) load = 0; }, get load() { return load; }, sprite, dot, ring, arc, line, shape, setCamera, render, addRipple, view, worldToScreen,
     cam, post, get count() { return count; }, get ok() { return !!gl; },
   };

@@ -40,6 +40,9 @@ const Scene = (() => {
     P.beat = U.clamp((W.heard - (W.lastKickT || -9)) / 0.75, 0, 1);
     P.ca = 0.0012 + W.caAmt + 0.0035 * W.kick * (W.reduceFlash ? 0.3 : 1);
     P.hurt *= Math.exp(-4 * dt);
+    if (P.hurt < 0.08) P.hurtDir = [0, 0];
+    const pl = W.player;
+    if (pl && pl.alive && pl.hp < pl.maxHp * 0.3 && !W.frozen) P.hurt = Math.max(P.hurt, 0.12 + 0.2 * W.kick);
     P.time += dt;
     // 段落色调
     const st = W.style;
@@ -120,6 +123,7 @@ const Scene = (() => {
         if (e.entering > 0) a = 1 - e.entering / 1.2 * 0.7;
         e.def.draw(e, a);
         if (e.flash > 0) R.ring(e.x, e.y, e.r * 1.05, 1.5, WHITE3, e.flash * 0.18, 0.3);
+        if (e.hitPlayerT > 0) R.ring(e.x, e.y, e.r * 1.25 + (1 - e.hitPlayerT) * 16, 3, RED, e.hitPlayerT, 0.6);
         continue;
       }
       const d = e.def;
@@ -138,18 +142,19 @@ const Scene = (() => {
       if (e.elite) R.ring(e.x, e.y, s * 1.35 + 3 * kick, 2, ELITE_RGB, 0.8);
       if (e.tele > 0) R.shape(e.x, e.y, s * 1.4, rot, d.shape, U.hex('#ffd23c', 3), e.tele, 0, 2);
       if (e.spawnT > 0) R.ring(e.x, e.y, e.r * (2.5 - sp * 1.5), 1.5, d.rgbHot, e.spawnT / 0.3);
+      if (e.hitPlayerT > 0) R.ring(e.x, e.y, s * 1.7 + (1 - e.hitPlayerT) * 12, 2.5, RED, e.hitPlayerT, 0.6);
     }
     // 危险物
     for (const h of W.hazards) {
       if (h.kind === 'ring') {
-        R.arc(h.x, h.y, h.r, h.thick * 0.6, h.gap, h.gapHalf, h.color, 0.9);
+        R.arc(h.x, h.y, h.r, h.thick * 0.7, h.gap, h.gapHalf, h.hitPlayerT > 0 ? RED : h.color, 0.9);
       } else if (h.kind === 'laser') {
         const L = 2600;
         const dx = Math.cos(h.ang) * L, dy = Math.sin(h.ang) * L;
         if (W.heard < h.warnUntil) {
           const left = (h.warnUntil - W.heard) / Seq.beatDur();
           const blink = 0.35 + 0.35 * Math.sin(W.time * 30);
-          R.line(h.x - dx, h.y - dy, h.x + dx, h.y + dy, 1.5 + (1 - left) * 3, h.color, blink * 0.5);
+          R.line(h.x - dx, h.y - dy, h.x + dx, h.y + dy, 1.5 + (1 - left) * 4, h.color, 0.25 + blink * 0.5);
         } else {
           const f = 1 - (h.fireUntil - W.heard) / 0.22;
           R.line(h.x - dx, h.y - dy, h.x + dx, h.y + dy, h.width * 0.5 * (1 - f * 0.5), h.color, 1 - f * 0.6);
@@ -269,10 +274,19 @@ const Scene = (() => {
     const p = W.player;
     if (!p.alive) return;
     const st = W.style;
-    const col = U.hex(st.color, 1.6 + 1.2 * W.kick);
-    const blink = p.invuln > 0 && p.dashT <= 0 ? (Math.sin(W.time * 50) > 0 ? 0.35 : 1) : 1;
-    const s = 15 * (1 + 0.12 * W.kick);
-    // 频谱环
+    const hf = Math.max(0, p.hitFlash);
+    const base = U.hex(st.color, 1.25 + 0.5 * W.kick);
+    const col = hf > 0 ? mix(base, RED, Math.min(1, hf)) : base;
+    const blink = p.invuln > 0 && p.dashT <= 0 ? (Math.sin(W.time * 40) > 0 ? 0.45 : 1) : 1;
+    const s = 19 * (1 + 0.08 * W.kick);
+    const fx = Math.cos(p.face), fy = Math.sin(p.face);
+
+    // 1) 压暗底：把主角身后的特效压暗，飞船才能从满屏光效里跳出来
+    R.layer('shadow');
+    R.sprite(p.x, p.y, 40, 0, SH.CIRCLE, 21, 0, [0.85, 0.85, 0.85], 1, 1, 0, 11, 1);
+    R.layer('add');
+
+    // 2) 频谱环（在暗底外圈）
     const spec = AE.spectrum();
     const n = specSmooth.length;
     for (let i = 0; i < n; i++) {
@@ -285,30 +299,51 @@ const Scene = (() => {
       }
       specSmooth[i] = Math.max(v, specSmooth[i] * 0.85);
       const a = (i / n) * TAU + W.time * 0.2;
-      const r0 = 38, r1 = 38 + specSmooth[i] * 30;
+      const r0 = 46, r1 = 46 + specSmooth[i] * 26;
       if (r1 - r0 > 2 && i % 2 === 0) {
         const c = U.hsl((i / n) * 0.6 + 0.45 + W.time * 0.02, 0.9, 0.6, 0.9);
-        R.line(p.x + Math.cos(a) * r0, p.y + Math.sin(a) * r0, p.x + Math.cos(a) * r1, p.y + Math.sin(a) * r1, 0.9, c, 0.4 * blink, 0.4);
+        R.line(p.x + Math.cos(a) * r0, p.y + Math.sin(a) * r0, p.x + Math.cos(a) * r1, p.y + Math.sin(a) * r1, 0.9, c, 0.35 * blink, 0.4);
       }
     }
     // 律动 III 彩虹尾迹
     if (W.grooveTier >= 3 && Math.random() < 0.8) {
-      W.parts.push({ x: p.x, y: p.y, vx: -p.vx * 0.1, vy: -p.vy * 0.1, size: 7, life: 0.5, max: 0.5, col: U.hsl(W.time * 0.8, 1, 0.6, 2), shape: SH.CIRCLE, rot: 0, grow: -10, drag: 2 });
+      W.parts.push({ x: p.x - fx * 12, y: p.y - fy * 12, vx: -p.vx * 0.1, vy: -p.vy * 0.1, size: 6, life: 0.5, max: 0.5, col: U.hsl(W.time * 0.8, 1, 0.6, 1.6), shape: SH.CIRCLE, rot: 0, grow: -10, drag: 2 });
     }
-    // 飞船
-    R.sprite(p.x, p.y, s * 1.4, p.face, SH.RHOMB, s * 1.35, s * 0.72, col, blink, 0.28, 2.4, 6, 0.8);
-    R.sprite(p.x, p.y, s * 0.6, p.face, SH.RHOMB, s * 0.55, s * 0.3, WHITE3, blink, 1, 0, 4, 0.6);
-    if (p.hitFlash > 0) R.dot(p.x, p.y, 26, RED, p.hitFlash * 0.5);
+
+    // 3) 飞船：清晰的箭头轮廓 + 白色驾驶舱 + 尾焰
+    const sp = Math.hypot(p.vx, p.vy);
+    const flame = 6 + Math.min(1, sp / 215) * 10 + 6 * W.kick + (p.dashT > 0 ? 14 : 0);
+    const bx = p.x - fx * s * 0.95, by = p.y - fy * s * 0.95;
+    R.line(bx, by, bx - fx * flame, by - fy * flame, 2.2, col, 0.55 * blink, 0.5);
+    R.sprite(p.x + fx * 2, p.y + fy * 2, s * 1.3, p.face, SH.RHOMB, s * 1.3, s * 0.62, col, blink, 0.16, 1.9, 2.5, 0.45);
+    R.sprite(p.x + fx * 8, p.y + fy * 8, s * 0.55, p.face, SH.TRI, s * 0.42, 0, WHITE3, blink, 1, 0, 2, 0.35);
+    R.dot(p.x - fx * 2, p.y - fy * 2, 2.6, WHITE3, blink, 0.3);
+    // 定位环：满屏混战时一眼找到自己
+    R.ring(p.x, p.y, 31, 0.8, base, 0.35 * blink, 0.2);
+    // 受击：红环炸开
+    if (hf > 0) R.ring(p.x, p.y, 18 + (1 - hf) * 40, 0.6 + 3 * hf, RED, hf, 0.5);
     // 护盾
     if (p.shield > 0) {
-      for (let i = 0; i < p.shield; i++) R.ring(p.x, p.y, 24 + i * 6, 1.4, INST.pad.rgb, 0.7 + 0.3 * W.kick);
+      for (let i = 0; i < p.shield; i++) R.ring(p.x, p.y, 35 + i * 5, 1.3, INST.pad.rgb, 0.7 + 0.3 * W.kick, 0.5);
     }
     // 冲刺充能点
     const max = W.stats.dashMax;
     for (let i = 0; i < max; i++) {
-      const a = p.face + Math.PI + (i - (max - 1) / 2) * 0.45;
+      const a = p.face + Math.PI + (i - (max - 1) / 2) * 0.42;
       const on = i < p.charges;
-      R.dot(p.x + Math.cos(a) * 24, p.y + Math.sin(a) * 24, on ? 2.6 : 1.6, on ? col : [0.15, 0.15, 0.2], on ? 1 : 0.6, 0.6);
+      R.dot(p.x + Math.cos(a) * 38, p.y + Math.sin(a) * 38, on ? 2.6 : 1.6, on ? base : [0.15, 0.15, 0.2], on ? 1 : 0.6, 0.6);
+    }
+    // 4) 受击方向：指向伤害来源的红色弧线 + 箭头
+    for (const m of W.hitMarks) {
+      const a = m.t / m.max;
+      const c = m.shield ? INST.pad.rgb : RED;
+      const R0 = 52 + (1 - a) * 10;
+      for (let k = -3; k <= 3; k++) {
+        const a0 = m.ang + k * 0.13, a1 = m.ang + (k + 1) * 0.13;
+        if (k === 3) break;
+        R.line(p.x + Math.cos(a0) * R0, p.y + Math.sin(a0) * R0, p.x + Math.cos(a1) * R0, p.y + Math.sin(a1) * R0, 2.6, c, a * (1 - Math.abs(k + 0.5) * 0.22), 0.6);
+      }
+      R.sprite(p.x + Math.cos(m.ang) * (R0 + 12), p.y + Math.sin(m.ang) * (R0 + 12), 9, m.ang, SH.TRI, 7, 0, c, a, 1, 0, 3, 0.6);
     }
   }
 
