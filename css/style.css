@@ -284,6 +284,8 @@ button:disabled { opacity: 0.35; cursor: default; box-shadow: none; text-shadow:
 @keyframes reveal { 0% { opacity: 0; transform: rotateY(90deg) scale(0.8); } 100% { opacity: 1; transform: none; } }
 .lv-keys { display: flex; gap: 20px; color: var(--dim); font-size: 13px; margin-top: 10px; }
 .lv-keys span.off { opacity: 0.3; }
+.lv-warn { min-height: 20px; color: #ffd84a; font-size: 14px; text-shadow: 0 0 8px #000; }
+#cards.locked .card { opacity: 0.75; }
 
 .pause-build { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
 

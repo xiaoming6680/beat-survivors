@@ -127,22 +127,32 @@ const Screens = (() => {
       <span class="k-listen">♪ 试听中</span>
     </div>`;
   }
+  // 升级界面刚弹出时短暂锁定输入：玩家可能正在踩拍冲刺 / 移动，不能让按键误选卡片
+  const LOCK_MS = 450;
+  let lvOpenT = 0, lockTimer = 0;
+  const lvLocked = () => performance.now() - lvOpenT < LOCK_MS;
   function showLevel(opts, onPick, title) {
     lvOpts = opts;
     lvOnPick = onPick;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     $('lvup-title').textContent = title || '升级';
     $('lvup-en').textContent = title ? 'BONUS' : 'LEVEL UP · Lv ' + W.level;
     const box = $('cards');
     box.innerHTML = opts.map((o, i) => cardHTML(Upgrades.card(o), i)).join('');
     box.querySelectorAll('.card').forEach((el) => {
-      el.addEventListener('mouseenter', () => highlight(+el.dataset.i));
-      el.addEventListener('click', () => pickLevel(+el.dataset.i));
+      el.addEventListener('mouseenter', () => { if (!lvLocked()) highlight(+el.dataset.i); });
+      el.addEventListener('click', () => { if (!lvLocked()) pickLevel(+el.dataset.i); });
     });
     $('lv-reroll').textContent = `R 刷新（${W.rerolls}）`;
     $('lv-reroll').classList.toggle('off', W.rerolls <= 0);
     $('lv-banish').textContent = `X 放逐（${W.banishes}）`;
     $('lv-banish').classList.toggle('off', W.banishes <= 0);
+    $('lv-warn').textContent = '';
     show('scr-level');
+    lvOpenT = performance.now();
+    box.classList.add('locked');
+    clearTimeout(lockTimer);
+    lockTimer = setTimeout(() => box.classList.remove('locked'), LOCK_MS);
     lvSel = -1;
     highlight(0);
   }
@@ -160,24 +170,46 @@ const Screens = (() => {
     Synth.ui('select', 74);
     cb(lvOpts[i]);
   }
+  let warnTimer = 0;
+  function lvWarn(text) {
+    const el = $('lv-warn');
+    el.textContent = text;
+    clearTimeout(warnTimer);
+    warnTimer = setTimeout(() => { el.textContent = ''; }, 1800);
+  }
+  // 键盘：空格 / Shift / J 是冲刺键，这里一律不选卡；按住不放的重复按键也忽略
   function levelKey(e) {
+    if (e.repeat) return true;
     const k = e.key.toLowerCase();
+    if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === 'KeyJ') {
+      lvWarn('空格是冲刺键，不会选卡 · 用 回车 或 数字键 1–4 选择');
+      return true;
+    }
+    if (lvLocked()) return true;
     if (k === 'arrowleft' || k === 'a') highlight((lvSel - 1 + lvOpts.length) % lvOpts.length);
     else if (k === 'arrowright' || k === 'd') highlight((lvSel + 1) % lvOpts.length);
     else if (k >= '1' && k <= '4') { highlight(+k - 1); pickLevel(+k - 1); }
-    else if (k === ' ' || k === 'enter') pickLevel(lvSel);
+    else if (k === 'enter') pickLevel(lvSel);
     else if (k === 'r') Game.reroll();
     else if (k === 'x') Game.banish(lvOpts[lvSel]);
     else return false;
     return true;
   }
+  // 手柄：左右选择，A 确认（必须是界面弹出后重新按下的）
+  function levelPad(action) {
+    if (lvLocked() || !lvOpts.length) return;
+    if (action === 'left') highlight((lvSel - 1 + lvOpts.length) % lvOpts.length);
+    else if (action === 'right') highlight((lvSel + 1) % lvOpts.length);
+    else if (action === 'confirm') pickLevel(lvSel);
+  }
 
-  let chestCb = null, chestReady = false;
+  let chestCb = null, chestReady = false, chestReadyT = 0;
   function showChest(items, onDone) {
     const box = $('chest-items');
     box.innerHTML = '';
     chestCb = onDone;
     chestReady = false;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     $('chest-hint').style.visibility = 'hidden';
     show('scr-chest');
     const bd = Seq.beatDur();
@@ -191,15 +223,19 @@ const Screens = (() => {
         Synth.ui('select', 72 + i * 4);
       }, (i + 1) * bd * 1000);
     });
-    setTimeout(() => { chestReady = true; $('chest-hint').style.visibility = 'visible'; }, (items.length + 1) * bd * 1000);
+    setTimeout(() => { chestReady = true; chestReadyT = performance.now(); $('chest-hint').style.visibility = 'visible'; }, (items.length + 1) * bd * 1000);
+  }
+  function chestContinue() {
+    if (!chestReady || !chestCb || performance.now() - chestReadyT < 250) return false;
+    const cb = chestCb;
+    chestCb = null;
+    cb();
+    return true;
   }
   function chestKey(e) {
-    if ((e.key === ' ' || e.key === 'Enter') && chestReady && chestCb) {
-      const cb = chestCb;
-      chestCb = null;
-      cb();
-      return true;
-    }
+    if (e.repeat) return true;
+    if (e.key === 'Enter') return chestContinue() || true;
+    if (e.code === 'Space') return true; // 空格是冲刺键，这里不响应
     return false;
   }
 
@@ -404,7 +440,7 @@ const Screens = (() => {
   }
 
   return {
-    show, hideAll, push, pop, moveFocus, bindActs, refreshMenu, buildChars, showLevel, levelKey, highlight, showChest, chestKey,
+    show, hideAll, push, pop, moveFocus, bindActs, refreshMenu, buildChars, showLevel, levelKey, levelPad, highlight, showChest, chestKey, chestContinue,
     showPause, showResults, drawArrangement, buildShop, buildRecords, buildAch, buildSettings,
     get current() { return current; },
     get selStyle() { return selStyle; },

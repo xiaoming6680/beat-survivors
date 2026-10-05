@@ -271,6 +271,7 @@ const Game = (() => {
     UI.buildTimeline();
     UI.show(true);
     Screens.hideAll();
+    blurFocus();
     G.state = 'play';
     if (!Meta.D.seenTutorial) {
       setTimeout(() => UI.hint('<b>WASD / 方向键</b> 移动 · 武器会跟着节拍自动攻击', 6), 600);
@@ -329,6 +330,7 @@ const Game = (() => {
   }
   function resumeFromHold() {
     Screens.hideAll();
+    blurFocus();
     const t = Seq.release();
     W.resumeT = t;
     W.frozen = false;
@@ -363,6 +365,7 @@ const Game = (() => {
   function resume() {
     if (G.state !== 'paused') return;
     Screens.hideAll();
+    blurFocus();
     AE.resume().then(() => {
       G.state = 'play';
       G.lastHeard = AE.Clock.now();
@@ -527,6 +530,7 @@ const Game = (() => {
   }
 
   function tick(dtReal) {
+    padMenu();
     Seq.tick();
     const heard = AE.Clock.now();
     W.heard = heard;
@@ -708,6 +712,34 @@ const Game = (() => {
   }
   function onKeyUp(e) {
     G.keys[e.code] = false;
+    // 游戏中 / 选卡 / 宝箱 / 校准时，松开空格或回车不能去“点”某个还带着焦点的按钮
+    if ((G.calib || G.state === 'play' || G.state === 'levelup' || G.state === 'chest') && (e.code === 'Space' || e.code === 'Enter')) e.preventDefault();
+  }
+
+  // 手柄在升级 / 宝箱界面：左右选择、A 确认（只认“新按下”）
+  const padPrev = { left: false, right: false, a: false };
+  function padMenu() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let left = false, right = false, a = false;
+    for (const gp of pads) {
+      if (!gp) continue;
+      const ax = gp.axes[0] || 0;
+      const b = (i) => gp.buttons[i] && gp.buttons[i].pressed;
+      left = left || ax < -0.5 || b(14);
+      right = right || ax > 0.5 || b(15);
+      a = a || b(0);
+    }
+    if (G.state === 'levelup') {
+      if (left && !padPrev.left) Screens.levelPad('left');
+      if (right && !padPrev.right) Screens.levelPad('right');
+      if (a && !padPrev.a) Screens.levelPad('confirm');
+    } else if (G.state === 'chest' && a && !padPrev.a) Screens.chestContinue();
+    padPrev.left = left;
+    padPrev.right = right;
+    padPrev.a = a;
+  }
+  function blurFocus() {
+    if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
   }
 
   function debugKey(code) {
@@ -784,6 +816,7 @@ const Game = (() => {
     Screens.bindActs('scr-records', { back, stoprec: stopRecord });
     Screens.bindActs('scr-ach', { back });
     Screens.bindActs('scr-settings', { back, calib: startCalib });
+    document.getElementById('scr-chest').addEventListener('click', () => { if (G.state === 'chest') Screens.chestContinue(); });
     Screens.bindActs('scr-help', { back });
   }
 
