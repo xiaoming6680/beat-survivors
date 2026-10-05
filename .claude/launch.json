@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "beat-survivors",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["tools/serve.py", "8918"],
+      "port": 8918
+    }
+  ]
+}
