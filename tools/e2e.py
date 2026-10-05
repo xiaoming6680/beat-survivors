@@ -8,6 +8,9 @@
   python tools/e2e.py victory                    # 直接打到通关结算
   python tools/e2e.py remix:house                # 10 件乐器满级 + 全 Remix 压力测试
   python tools/e2e.py load:house:150:40:0        # 统计玩家特效亮度负载（自动曝光）
+  python tools/e2e.py hurt                       # 第一次掉血时截图（受击反馈）
+  python tools/e2e.py levelkeys                  # 选卡界面：空格不选卡、弹出瞬间锁定
+  python tools/e2e.py calib                      # 延迟校准：空格不会重新触发校准按钮
 截图输出到系统临时目录下的 beat-survivors-shots/。
 """
 import asyncio, json, os, sys, tempfile, time
@@ -148,6 +151,64 @@ async def main(mode):
                 samples.append(await page.evaluate("[+(W.fxLoad||0).toFixed(2), +Scene.autoDim.toFixed(2)]"))
             await page.screenshot(path=str(OUT / f"load_{style}_{bar}_{rmx}.png"))
             print(json.dumps({"samples": samples, "inst": await page.evaluate("W.inst")}, ensure_ascii=False))
+        elif mode == "hurt":
+            # 受击反馈：等到第一次掉血，立刻截图
+            await page.goto(URL + "?bot&debug&unlock&play=house&bar=100&lv=12")
+            await page.wait_for_timeout(500)
+            await page.mouse.click(640, 360)
+            got = None
+            for _ in range(400):
+                await page.wait_for_timeout(50)
+                d = await page.evaluate("W.dmgTaken")
+                if d > 0:
+                    await page.wait_for_timeout(90)
+                    await page.screenshot(path=str(OUT / "hurt_1.png"))
+                    got = await page.evaluate("({hp: W.player.hp|0, marks: W.hitMarks.length, popups: document.querySelectorAll('.dmg').length, text: [...document.querySelectorAll('.dmg')].map(e => e.textContent), log: W.hurtLog.slice(-2)})")
+                    break
+            await page.wait_for_timeout(250)
+            await page.screenshot(path=str(OUT / "hurt_2.png"))
+            print(json.dumps(got, ensure_ascii=False))
+        elif mode == "levelkeys":
+            # 选卡界面：空格不选卡、弹出瞬间的回车被锁住、之后回车才选
+            await page.goto(URL + "?debug&unlock&play=house")
+            await page.wait_for_timeout(500)
+            await page.mouse.click(640, 360)
+            await page.wait_for_timeout(1500)
+            await page.keyboard.press("KeyL")
+            await page.wait_for_timeout(60)
+            r = {"opened": await page.evaluate("Game.state")}
+            await page.keyboard.press("Enter")          # 锁定期内
+            r["afterEarlyEnter"] = await page.evaluate("Game.state")
+            await page.wait_for_timeout(500)
+            await page.keyboard.press("Space")          # 冲刺键
+            await page.wait_for_timeout(50)
+            r["afterSpace"] = await page.evaluate("Game.state")
+            r["warn"] = await page.evaluate("document.getElementById('lv-warn').textContent")
+            await page.screenshot(path=str(OUT / "levelkeys.png"))
+            await page.keyboard.press("Enter")
+            await page.wait_for_timeout(100)
+            r["afterEnter"] = await page.evaluate("Game.state")
+            r["inst"] = await page.evaluate("W.inst")
+            print(json.dumps(r, ensure_ascii=False))
+        elif mode == "calib":
+            # 校准：点按钮后按空格，按钮不能被空格重新触发
+            await page.goto(URL)
+            await page.wait_for_timeout(500)
+            await page.mouse.click(640, 360)
+            await page.wait_for_timeout(1200)
+            await page.click("button[data-act=settings]")
+            await page.wait_for_timeout(300)
+            await page.click("button[data-act=calib]")
+            await page.wait_for_timeout(700)
+            bd = await page.evaluate("Seq.beatDur()")
+            prog = []
+            for k in range(10):
+                await page.keyboard.press("Space")
+                prog.append(await page.evaluate("Game.calib ? Game.calib.offs.length : -1"))
+                await page.wait_for_timeout(int(bd * 1000))
+            await page.wait_for_timeout(200)
+            out = await page.evaluate("document.getElementById('calib-out').textContent")
+            print(json.dumps({"progress": prog, "out": out, "latency": await page.evaluate("Meta.D.settings.latency")}, ensure_ascii=False))
         print("ERRORS:", json.dumps(errors[:20], ensure_ascii=False))
         await browser.close()
 
