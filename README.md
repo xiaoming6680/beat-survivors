@@ -5,7 +5,7 @@
 
 ## 怎么玩
 
-**双击 `index.html`** 就能在 Edge / Chrome 里玩，不用安装任何东西。建议戴耳机。
+**在线玩：<https://beat.xiaoming6680.link>**，或者下载后**双击 `index.html`**，在 Edge / Chrome 里玩，不用安装任何东西。建议戴耳机。
 
 | 操作 | 键位 |
 |------|------|
