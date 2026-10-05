@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>节拍幸存者</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="ui">
+  <!-- 启动：解锁音频 -->
+  <section id="scr-boot" class="screen show">
+    <div class="logo"><span class="logo-cn">节拍幸存者</span><span class="logo-en">BEAT SURVIVORS</span></div>
+    <div class="boot-hint blink">点击任意处 / 按任意键 开始</div>
+    <div class="boot-sub">建议戴耳机 · 声音是这个游戏的一半</div>
+    <div id="boot-err" class="err"></div>
+  </section>
+
+  <!-- 主菜单 -->
+  <section id="scr-menu" class="screen">
+    <div class="logo small"><span class="logo-cn">节拍幸存者</span><span class="logo-en">BEAT SURVIVORS</span></div>
+    <nav class="menu" id="menu-list">
+      <button data-act="play" class="primary">开始演出</button>
+      <button data-act="shop">工作室</button>
+      <button data-act="records">唱片架</button>
+      <button data-act="ach">成就</button>
+      <button data-act="settings">设置</button>
+      <button data-act="help">玩法说明</button>
+    </nav>
+    <div class="menu-foot"><span id="menu-notes"></span><span id="menu-best"></span></div>
+  </section>
+
+  <!-- 角色 / 曲风选择 -->
+  <section id="scr-chars" class="screen">
+    <h2 class="scr-title">选择角色 <small>每个角色是一种曲风</small></h2>
+    <div id="char-list" class="char-list"></div>
+    <div class="row-btns">
+      <button data-act="back">返回</button>
+      <button data-act="go" class="primary" id="char-go">开演</button>
+    </div>
+  </section>
+
+  <!-- 游戏 HUD -->
+  <section id="hud" class="hud">
+    <div id="hud-top">
+      <div class="tl" id="tl"><div class="tl-secs" id="tl-secs"></div><div class="tl-head" id="tl-head"></div></div>
+      <div class="tl-label"><span id="tl-sec"></span><span id="tl-info"></span></div>
+      <div id="boss-bar" class="boss-bar"><div class="boss-name" id="boss-name"></div><div class="boss-track"><div class="boss-fill" id="boss-fill"></div></div></div>
+    </div>
+    <div id="hud-left">
+      <div class="hp"><div class="hp-track"><div class="hp-fill" id="hp-fill"></div></div><span id="hp-text"></span></div>
+      <div class="lv-row"><span class="lv" id="lv">Lv 1</span><span class="combo" id="combo"></span></div>
+      <div class="vu"><canvas id="vu" width="180" height="96"></canvas><div class="vu-label" id="vu-label">律动</div></div>
+      <div class="mixer" id="mixer"></div>
+      <div class="fxrack" id="fxrack"></div>
+    </div>
+    <div id="hud-right">
+      <div class="time" id="time">0:00</div>
+      <div class="kills" id="kills">0</div>
+      <div class="key" id="keyinfo"></div>
+      <div class="chord" id="chord"></div>
+    </div>
+    <div id="hud-xp"><div class="xp-fill" id="xp-fill"></div></div>
+    <div id="banner" class="banner"><div class="b-cn"></div><div class="b-en"></div></div>
+    <div id="count" class="count"></div>
+    <div id="judge" class="judge"></div>
+    <div id="toast" class="toast"></div>
+    <div id="hint" class="hint"></div>
+  </section>
+
+  <!-- 升级 -->
+  <section id="scr-level" class="screen overlay">
+    <h2 class="lv-title"><span id="lvup-title">升级</span> <small id="lvup-en">LEVEL UP</small></h2>
+    <div class="lv-hint">音乐正在循环 · <b>高亮的卡片会加入音乐试听</b></div>
+    <div id="cards" class="cards"></div>
+    <div class="lv-keys"><span>←→ / A D 选择</span><span>1–4 直接选</span><span>空格 / 回车 确认</span><span id="lv-reroll">R 刷新</span><span id="lv-banish">X 放逐</span></div>
+  </section>
+
+  <!-- 宝箱 -->
+  <section id="scr-chest" class="screen overlay">
+    <h2 class="lv-title">宝箱 <small>CHEST</small></h2>
+    <div id="chest-items" class="cards"></div>
+    <div class="lv-keys blink" id="chest-hint">空格 / 回车 继续</div>
+  </section>
+
+  <!-- 暂停 -->
+  <section id="scr-pause" class="screen overlay">
+    <h2 class="scr-title">暂停 <small>PAUSED</small></h2>
+    <div id="pause-build" class="pause-build"></div>
+    <nav class="menu">
+      <button data-act="resume" class="primary">继续</button>
+      <button data-act="settings">设置</button>
+      <button data-act="quit">放弃本局</button>
+    </nav>
+  </section>
+
+  <!-- 结算 -->
+  <section id="scr-results" class="screen">
+    <div class="res-head">
+      <div class="res-title" id="res-title"></div>
+      <div class="res-song" id="res-song"></div>
+      <div class="res-meta" id="res-meta"></div>
+    </div>
+    <div class="res-body">
+      <div class="res-grade" id="res-grade"></div>
+      <div class="res-arr"><canvas id="res-canvas"></canvas></div>
+    </div>
+    <div class="res-stats" id="res-stats"></div>
+    <div class="res-gain" id="res-gain"></div>
+    <div class="row-btns">
+      <button data-act="again" class="primary">再来一局</button>
+      <button data-act="chars">换角色</button>
+      <button data-act="menu">返回菜单</button>
+    </div>
+  </section>
+
+  <!-- 工作室 -->
+  <section id="scr-shop" class="screen">
+    <h2 class="scr-title">工作室 <small>永久强化与解锁 · <span id="shop-notes"></span></small></h2>
+    <div class="shop-wrap">
+      <div><h3>调音台</h3><div id="shop-list" class="shop-list"></div></div>
+      <div><h3>解锁</h3><div id="unlock-list" class="shop-list"></div></div>
+    </div>
+    <div class="row-btns"><button data-act="back">返回</button><button data-act="refund">全部退款重配</button></div>
+  </section>
+
+  <!-- 唱片架 -->
+  <section id="scr-records" class="screen">
+    <h2 class="scr-title">唱片架 <small>每局 2 分钟以上的演出都会留下一张唱片，可以重放</small></h2>
+    <div id="rec-list" class="rec-list"></div>
+    <div id="rec-player" class="rec-player"><canvas id="rec-canvas"></canvas><div id="rec-now"></div></div>
+    <div class="row-btns"><button data-act="stoprec">停止播放</button><button data-act="back">返回</button></div>
+  </section>
+
+  <!-- 成就 -->
+  <section id="scr-ach" class="screen">
+    <h2 class="scr-title">成就 <small id="ach-count"></small></h2>
+    <div id="ach-list" class="ach-list"></div>
+    <div class="row-btns"><button data-act="back">返回</button></div>
+  </section>
+
+  <!-- 设置 -->
+  <section id="scr-settings" class="screen">
+    <h2 class="scr-title">设置</h2>
+    <div class="settings" id="settings-list"></div>
+    <div class="calib" id="calib">
+      <div>延迟校准：跟着拍子按空格 8 次</div>
+      <div id="calib-out"></div>
+      <button data-act="calib">开始校准</button>
+    </div>
+    <div class="row-btns"><button data-act="back" class="primary">完成</button></div>
+  </section>
+
+  <!-- 玩法说明 -->
+  <section id="scr-help" class="screen">
+    <h2 class="scr-title">玩法说明</h2>
+    <div class="help">
+      <p><b>WASD / 方向键</b> 移动。所有乐器自动攻击，而且<b>都卡在节拍上</b>。</p>
+      <p><b>空格 / Shift</b> 冲刺（冲刺中无敌）。在<b>拍点上</b>按下是<b>完美冲刺</b>：不消耗充能、落地放一圈冲击波、增加律动值。踩准了可以每拍一冲。</p>
+      <p><b>律动值</b>：完美冲刺和击杀会让它上涨，被打会掉。30 / 60 / 90 分别是律动 I / II / III：伤害更高，音乐里也会多出新的层。</p>
+      <p><b>升级</b>：三选一。选的是“加一轨乐器”、升级乐器，或者装一个效果器。选卡时音乐会循环当前小节，<b>高亮的卡片会直接加进音乐里让你试听</b>。</p>
+      <p><b>效果器</b>就是被动，同时也真的作用在整首歌的混音上：失真让声音变脏也让伤害更高，延迟让攻击带回声……</p>
+      <p><b>Remix</b>：满级乐器 + 对应效果器，从精英或 Boss 的宝箱里开出进化版本。</p>
+      <p><b>曲式就是关卡</b>：铺垫段敌人会合围，Drop 那一拍全屏冲击清场、Boss 进场。回落段喘口气、打精英拿宝箱。击败终极 Drop 的指挥家，歌曲进入尾声，通关。</p>
+      <p>敌人的子弹和 Boss 的招式也都落在拍子上，<b>提前一拍有预警</b>：听着躲。</p>
+      <p><b>Esc / P</b> 暂停。</p>
+    </div>
+    <div class="row-btns"><button data-act="back" class="primary">返回</button></div>
+  </section>
+
+  <div id="debug" class="debug"></div>
+  <div id="fps" class="fps"></div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/audio/harmony.js"></script>
+<script src="js/audio/engine.js"></script>
+<script src="js/audio/synths.js"></script>
+<script src="js/render/gl.js"></script>
+<script src="js/game/styles.js"></script>
+<script src="js/game/song.js"></script>
+<script src="js/game/instruments.js"></script>
+<script src="js/game/effects.js"></script>
+<script src="js/audio/sequencer.js"></script>
+<script src="js/audio/offline.js"></script>
+<script src="js/game/enemies.js"></script>
+<script src="js/game/director.js"></script>
+<script src="js/game/world.js"></script>
+<script src="js/game/upgrades.js"></script>
+<script src="js/game/meta.js"></script>
+<script src="js/render/scene.js"></script>
+<script src="js/ui/ui.js"></script>
+<script src="js/ui/screens.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
