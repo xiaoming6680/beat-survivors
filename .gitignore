@@ -1,0 +1,12 @@
+# 依赖与构建产物
+node_modules/
+dist/
+.vite/
+
+# 日志与系统文件
+*.log
+.DS_Store
+Thumbs.db
+
+# Claude Code 本机设置
+.claude/settings.local.json
