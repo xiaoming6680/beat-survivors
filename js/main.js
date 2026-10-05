@@ -758,28 +758,57 @@ const Game = (() => {
   }
 
   // ---------------- 校准 ----------------
-  function startCalib() {
-    G.calib = { offs: [] };
-    document.getElementById('calib-out').textContent = '跟着底鼓按空格…（0 / 8）';
+  // 播放一串木鱼嘀嗒（落在音序器的拍子网格上），玩家跟着按空格；去掉前 2 下，取中位数
+  const CALIB_TAPS = 10;
+  function startCalib(btn) {
+    const out = document.getElementById('calib-out');
+    blurFocus();
+    if (G.state === 'paused' || !AE.on || AE.A.live.ctx.state !== 'running') {
+      out.textContent = '暂停中没法校准，请回主菜单的设置里校准';
+      return;
+    }
+    if (G.calib) return;
+    const bd = Seq.beatDur();
+    const first = Seq.nearestBeat(AE.Clock.sched() + 0.6).t;
+    const clicks = [];
+    for (let k = 0; k < CALIB_TAPS + 6; k++) {
+      const t = first + k * bd;
+      clicks.push(t);
+      Synth.woodblock(t, 1.2, k % 4 === 0);
+    }
+    G.calib = { offs: [], clicks, btn: btn || null };
+    if (btn) { btn.disabled = true; btn.textContent = '校准中…'; }
+    out.textContent = `听木鱼声，每一下按一次空格（0 / ${CALIB_TAPS}）· Esc 取消`;
+    G.calib.timer = setTimeout(() => endCalib('超时了，再试一次'), (CALIB_TAPS + 8) * bd * 1000 + 600);
+  }
+  function endCalib(msg) {
+    if (!G.calib) return;
+    clearTimeout(G.calib.timer);
+    if (G.calib.btn) { G.calib.btn.disabled = false; G.calib.btn.textContent = '开始校准'; }
+    G.calib = null;
+    if (msg) document.getElementById('calib-out').textContent = msg;
   }
   function calibTap(e) {
-    if (e.code === 'Escape') { G.calib = null; document.getElementById('calib-out').textContent = '已取消'; return; }
-    if (e.code !== 'Space') return;
+    if (e.code === 'Escape') { endCalib('已取消'); return; }
+    if (e.code !== 'Space' || e.repeat) return;
+    const C = G.calib;
+    // 用“不含当前补偿”的听感时间，和嘀嗒声的实际时间比
     const h = AE.Clock.fromPerf(e.timeStamp) + AE.Clock.calib;
-    const nb = Seq.nearestBeat(h);
-    G.calib.offs.push(h - nb.t);
-    const n = G.calib.offs.length;
-    document.getElementById('calib-out').textContent = `跟着底鼓按空格…（${n} / 8）`;
-    if (n >= 8) {
-      const o = G.calib.offs.slice().sort((a, b) => a - b);
-      const med = (o[3] + o[4]) / 2;
+    let best = C.clicks[0];
+    for (const t of C.clicks) if (Math.abs(t - h) < Math.abs(best - h)) best = t;
+    C.offs.push(h - best);
+    const n = C.offs.length;
+    document.getElementById('calib-out').textContent = `听木鱼声，每一下按一次空格（${n} / ${CALIB_TAPS}）· Esc 取消`;
+    if (n >= CALIB_TAPS) {
+      const o = C.offs.slice(2).sort((a, b) => a - b);
+      const med = o.length % 2 ? o[(o.length - 1) / 2] : (o[o.length / 2 - 1] + o[o.length / 2]) / 2;
       const ms = Math.round(U.clamp(med * 1000, -150, 250) / 5) * 5;
       Meta.D.settings.latency = ms;
       Meta.save();
       applySettings();
+      endCalib();
       Screens.buildSettings();
-      document.getElementById('calib-out').textContent = `完成：补偿 ${ms}ms`;
-      G.calib = null;
+      document.getElementById('calib-out').textContent = `完成：延迟补偿设为 ${ms}ms`;
     }
   }
 
@@ -815,7 +844,7 @@ const Game = (() => {
     Screens.bindActs('scr-shop', { back, refund: () => { Meta.refundShop(); Screens.buildShop(); } });
     Screens.bindActs('scr-records', { back, stoprec: stopRecord });
     Screens.bindActs('scr-ach', { back });
-    Screens.bindActs('scr-settings', { back, calib: startCalib });
+    Screens.bindActs('scr-settings', { back: () => { endCalib(''); back(); }, calib: (b) => startCalib(b) });
     document.getElementById('scr-chest').addEventListener('click', () => { if (G.state === 'chest') Screens.chestContinue(); });
     Screens.bindActs('scr-help', { back });
   }
